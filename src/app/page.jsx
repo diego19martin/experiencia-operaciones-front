@@ -1,6 +1,13 @@
-import { redirect } from "next/navigation"
+import { Toaster } from "@/components/ui/toaster"
 
-export default function Home() {
-  // Cuando alguien va a "/", lo redirigimos a "/login"
-  redirect("/login")
+export default function RootLayout({ children }) {
+  return (
+    <html lang="es">
+      <body>
+        {children}
+        <Toaster />
+      </body>
+    </html>
+  )
 }
+

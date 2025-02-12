@@ -1,7 +1,8 @@
 import { Inter } from "next/font/google"
 import "./globals.css"
-import Navbar from "../components/Navbar"
+import { Sidebar } from "@/components/Sidebar"
 import { AuthProvider } from "@/contexts/AuthContext"
+import { Toaster } from "@/components/ui/toaster"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -15,8 +16,11 @@ export default function RootLayout({ children }) {
     <html lang="es">
       <body className={inter.className}>
         <AuthProvider>
-          <Navbar />
-          <main className="container mx-auto px-4 py-8">{children}</main>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 md:ml-[240px] p-8">{children}</main>
+          </div>
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

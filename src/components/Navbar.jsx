@@ -62,18 +62,21 @@ const Navbar = () => {
       navLinks = [
         { href: "/dashboard/operaciones", label: "Dashboard Ops" },
         { href: "/areas/operaciones", label: "Validaciones" },
+        { href: "/novedades", label: "Novedades" },
       ];
       break;
     case "jefe_limpieza":
       navLinks = [
         { href: "/dashboard/limpieza", label: "Dashboard Limpieza" },
         { href: "/areas/limpieza", label: "Validaciones" },
+        { href: "/novedades", label: "Novedades" },
       ];
       break;
     case "coordinador_atencion":
       navLinks = [
         { href: "/dashboard/atencion", label: "Dashboard Atención" },
         { href: "/areas/atencion", label: "Validaciones" },
+        { href: "/novedades", label: "Novedades" },
       ];
       break;
     case "jefe_juego":
@@ -83,10 +86,14 @@ const Navbar = () => {
         { href: "/resumen-turno", label: "Resumen de Turno" },
         { href: "/journey-map", label: "Journey Map" },
         { href: "/configuracion", label: "Configuración" },
+        { href: "/novedades", label: "Novedades" },
       ];
       break;
     default:
-      navLinks = [{ href: "/dashboard", label: "Dashboard" }];
+      navLinks = [
+        { href: "/dashboard", label: "Dashboard" },
+        { href: "/novedades", label: "Novedades" },
+      ];
   }
 
   return (

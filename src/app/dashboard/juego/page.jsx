@@ -35,9 +35,14 @@ export default function DashboardJuego() {
         </CardContent>
       </Card>
 
-      <Button className="mt-4" onClick={() => router.push("/areas/juego")}>
-        Ir a Validaciones de Juego
-      </Button>
+      <div className="mt-4 space-y-2">
+        <Button onClick={() => router.push("/areas/juego")}>
+          Ir a Validaciones de Juego
+        </Button>
+        <Button onClick={() => router.push("/novedades")} variant="outline">
+          Gestionar Novedades
+        </Button>
+      </div>
     </div>
   )
 }
