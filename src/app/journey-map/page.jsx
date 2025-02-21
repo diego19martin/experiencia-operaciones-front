@@ -3,302 +3,382 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Star, StarHalf } from "lucide-react"
+import { Star, StarHalf, AlertCircle } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { calcularTurno } from "@/lib/utils"
 
-/**
- * JourneyCustomerMap:
- * - Obtiene validaciones con `status=approved` (o ajústalo).
- * - Muestra alert si hay val. pendientes.
- * - Calcula promedios por área e instancia, renderiza en Recharts.
- * - Muestra tarjetas con promedios globales.
- * - (Opcional) Desglosa detalle por ítem y relevamiento.
- */
+// Reemplazar la constante instanceImages con instanceEmojis
+const instanceEmojis = {
+  ingreso: "🚪",
+  experiencia_en_maquina: "🎰",
+  pausa: "🚽",
+  salida: "🚶",
+}
+
+const JourneyRoad = ({ stages, averageScores }) => {
+  const getEmotionIcon = (score) => {
+    if (score > 4) return "😍"
+    if (score >= 3) return "😊"
+    if (score >= 2) return "😐"
+    if (score >= 1) return "😕"
+    return "😢"
+  }
+
+  const getEmotionColor = (score) => {
+    if (score > 4) return "bg-green-50 border-green-200 text-green-700"
+    if (score >= 3) return "bg-green-50 border-green-200 text-green-600"
+    if (score >= 2) return "bg-yellow-50 border-yellow-200 text-yellow-700"
+    return "bg-red-50 border-red-200 text-red-700"
+  }
+
+  return (
+    <div className="relative mt-8 mb-12">
+      <div className="absolute w-full h-4 bg-gray-300 top-1/2 transform -translate-y-1/2 rounded-full"></div>
+      <div className="flex justify-between items-center relative z-10">
+        {stages.map((stage, index) => (
+          <div key={stage} className="flex flex-col items-center">
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center ${getEmotionColor(averageScores[index])}`}
+            >
+              <span className="text-3xl" role="img" aria-label={stage}>
+                {instanceEmojis[stage.replace(" ", "_")] || "❓"}
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white border-4 border-gray-200 -mt-4">
+              <span className="text-2xl" role="img" aria-label={`Emotion for ${stage}`}>
+                {getEmotionIcon(averageScores[index])}
+              </span>
+            </div>
+            <p className="mt-2 text-sm font-medium text-center">{stage}</p>
+            <p className="text-lg font-bold">{averageScores[index].toFixed(2)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function JourneyCustomerMap() {
   const [validaciones, setValidaciones] = useState([])
   const [isLoading, setIsLoading] = useState(true)
-  // Para mostrar si hay pendientes
+  const [error, setError] = useState(null)
   const [pendientes, setPendientes] = useState(0)
 
-  // 1) Cargamos sólo 'approved' para el mapa
   useEffect(() => {
-    fetch("http://localhost:3001/api/validations?status=approved")
-      .then((res) => res.json())
-      .then((data) => {
-        setValidaciones(data)
+    const fetchData = async () => {
+      try {
+        const turnoActual = calcularTurno()
+        const today = new Date().toISOString().split("T")[0]
+
+        const [approvedRes, pendingRes] = await Promise.all([
+          fetch(`http://localhost:3001/api/validations?status=approved&date=${today}&turno=${turnoActual}`),
+          fetch(`http://localhost:3001/api/validations?status=pending&date=${today}&turno=${turnoActual}`),
+        ])
+
+        if (!approvedRes.ok || !pendingRes.ok) {
+          throw new Error("Error al obtener las validaciones")
+        }
+
+        const [approvedData, pendingData] = await Promise.all([approvedRes.json(), pendingRes.json()])
+
+        setValidaciones(Array.isArray(approvedData) ? approvedData : [])
+        setPendientes(Array.isArray(pendingData) ? pendingData.length : 0)
+      } catch (err) {
+        console.error("Error:", err)
+        setError(err.message)
+      } finally {
         setIsLoading(false)
-      })
-      .catch((err) => {
-        console.error("Error al obtener validaciones aprobadas:", err)
-        setIsLoading(false)
-      })
+      }
+    }
+
+    fetchData()
   }, [])
 
-  // 2) Revisa cuántas hay 'pending'
-  useEffect(() => {
-    fetch("http://localhost:3001/api/validations?status=pending")
-      .then((res) => res.json())
-      .then((data) => {
-        setPendientes(data.length)
-      })
-      .catch((err) => console.error("Error revisando pendientes:", err))
-  }, [])
-
-  // 3) Calcula promedios para un área específica
   const calcularPromediosPorArea = (area) => {
+    if (!Array.isArray(validaciones) || validaciones.length === 0) return []
+
     const validacionesArea = validaciones.filter((v) => v.area === area)
     const instancias = ["ingreso", "experiencia_en_maquina", "pausa", "salida"]
 
     return instancias.map((instancia) => {
       const valInstancia = validacionesArea.filter((v) => v.instancia === instancia)
       const promedio =
-        valInstancia.reduce((acc, v) => acc + v.rating, 0) / (valInstancia.length || 1)
+        valInstancia.length > 0 ? valInstancia.reduce((acc, v) => acc + v.rating, 0) / valInstancia.length : 0
 
       return {
         name: instancia.replace("_", " "),
-        puntuacion: promedio || 0,
+        puntuacion: Number(promedio.toFixed(2)),
       }
     })
   }
 
-  // 4) Calcula promedios globales (Limpieza, Atención, Juego)
   const calcularPromediosGenerales = () => {
+    if (!Array.isArray(validaciones) || validaciones.length === 0) return []
+
     const areas = ["Limpieza", "Atención al Cliente", "Juego"]
     const instancias = ["ingreso", "experiencia_en_maquina", "pausa", "salida"]
 
     return instancias.map((instancia) => {
-      const sumaPorAreas = areas.reduce((acc, area) => {
-        const val = validaciones.filter(
-          (v) => v.area === area && v.instancia === instancia
-        )
-        const promArea =
-          val.reduce((sum, v) => sum + v.rating, 0) / (val.length || 1)
-        return acc + promArea
-      }, 0)
+      const promediosPorArea = areas.map((area) => {
+        const val = validaciones.filter((v) => v.area === area && v.instancia === instancia)
+        return val.length > 0 ? val.reduce((sum, v) => sum + v.rating, 0) / val.length : 0
+      })
 
-      const promedioGeneral = sumaPorAreas / areas.length
+      const promedioGeneral = promediosPorArea.reduce((a, b) => a + b, 0) / areas.length
+
       return {
         name: instancia.replace("_", " "),
-        promedio: promedioGeneral || 0,
+        promedio: Number(promedioGeneral.toFixed(2)),
       }
     })
   }
 
-  // 5) Renderiza estrellas
+  // Actualizar las funciones getEmotionIcon y getEmotionText en el componente principal
+  const getEmotionIcon = (score) => {
+    if (score > 4) return "😍"
+    if (score >= 3) return "😊"
+    if (score >= 2) return "😐"
+    if (score >= 1) return "😕"
+    return "😢"
+  }
+
+  const getEmotionColor = (score) => {
+    if (score > 4) return "bg-green-50 border-green-200 text-green-700"
+    if (score >= 3) return "bg-green-50 border-green-200 text-green-600"
+    if (score >= 2) return "bg-yellow-50 border-yellow-200 text-yellow-700"
+    return "bg-red-50 border-red-200 text-red-700"
+  }
+
+  const getEmotionText = (score) => {
+    if (score > 4) return "¡Excelente experiencia! 🌟"
+    if (score >= 3) return "Buena experiencia 👍"
+    if (score >= 2) return "Experiencia regular 🤔"
+    return "Necesita mejoras urgentes 🚨"
+  }
+
+  // Actualizar el CustomTooltip
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const score = payload[0].value
+      return (
+        <div className={`p-3 rounded-lg border ${getEmotionColor(score)}`}>
+          <p className="font-medium">{label}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-lg font-bold">{score.toFixed(2)}</span>
+            <span className="text-2xl" role="img" aria-label={`Emotion for ${label}`}>
+              {getEmotionIcon(score)}
+            </span>
+          </div>
+          <p className="text-sm mt-1">{getEmotionText(score)}</p>
+        </div>
+      )
+    }
+    return null
+  }
+
   const renderStars = (puntuacion) => {
+    if (typeof puntuacion !== "number") return null
+
     const stars = []
     const fullStars = Math.floor(puntuacion)
     const hasHalfStar = puntuacion % 1 >= 0.5
 
     for (let i = 0; i < fullStars; i++) {
-      stars.push(<Star key={`full-${i}`} className="text-yellow-400 inline-block" />)
+      stars.push(<Star key={`full-${i}`} className="w-5 h-5 text-yellow-400 fill-yellow-400" />)
     }
+
     if (hasHalfStar) {
-      stars.push(<StarHalf key="half" className="text-yellow-400 inline-block" />)
+      stars.push(<StarHalf key="half" className="w-5 h-5 text-yellow-400 fill-yellow-400" />)
     }
+
     const emptyStars = 5 - stars.length
     for (let i = 0; i < emptyStars; i++) {
-      stars.push(<Star key={`empty-${i}`} className="text-gray-300 inline-block" />)
+      stars.push(<Star key={`empty-${i}`} className="w-5 h-5 text-gray-300" />)
     }
-    return stars
+
+    return <div className="flex gap-1">{stars}</div>
   }
 
-  // 6) Gráfico para un área específica
   const renderAreaChart = (area) => {
     const data = calcularPromediosPorArea(area)
+    const promedioArea = data.length > 0 ? data.reduce((acc, val) => acc + val.puntuacion, 0) / data.length : 0
 
     return (
-      <Card className="mb-8">
+      <Card className={`mb-8 ${getEmotionColor(promedioArea)}`}>
         <CardHeader>
-          <CardTitle>{area}</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>{area}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Promedio: {promedioArea.toFixed(2)}</span>
+              <span className="text-2xl" role="img" aria-label={`Emotion for ${area}`}>
+                {getEmotionIcon(promedioArea)}
+              </span>
+            </div>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="w-full h-[300px]" />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 5]} />
-                <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="puntuacion"
-                  stroke="#8884d8"
-                  name="Puntuación"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <>
+              <JourneyRoad stages={data.map((d) => d.name)} averageScores={data.map((d) => d.puntuacion)} />
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={data}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fill: "#666" }} />
+                  <YAxis domain={[0, 5]} tick={{ fill: "#666" }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="puntuacion"
+                    stroke="#8884d8"
+                    strokeWidth={2}
+                    dot={(props) => {
+                      if (!props.payload) return null
+                      const score = props.payload.puntuacion
+                      return (
+                        <g transform={`translate(${props.cx},${props.cy})`}>
+                          <circle r={6} fill="#8884d8" />
+                          <g transform="translate(-12,-12) scale(0.75)">{getEmotionIcon(score)}</g>
+                        </g>
+                      )
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </>
           )}
         </CardContent>
       </Card>
     )
   }
 
-  // 7) Gráfico de promedios generales
   const renderGeneralChart = () => {
     const data = calcularPromediosGenerales()
+    const promedioGeneral = data.length > 0 ? data.reduce((acc, val) => acc + val.promedio, 0) / data.length : 0
 
     return (
-      <Card className="mb-8">
+      <Card className={`mb-8 ${getEmotionColor(promedioGeneral)}`}>
         <CardHeader>
-          <CardTitle>Promedio General</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Promedio General</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Promedio: {promedioGeneral.toFixed(2)}</span>
+              {getEmotionIcon(promedioGeneral)}
+            </div>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="w-full h-[300px]" />
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 5]} />
-                <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="promedio"
-                  stroke="#82ca9d"
-                  name="Promedio General"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <>
+              <JourneyRoad stages={data.map((d) => d.name)} averageScores={data.map((d) => d.promedio)} />
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={data}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis domain={[0, 5]} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="promedio"
+                    stroke="#82ca9d"
+                    strokeWidth={2}
+                    dot={(props) => {
+                      if (!props.payload) return null
+                      const score = props.payload.promedio
+                      return (
+                        <g transform={`translate(${props.cx},${props.cy})`}>
+                          <circle r={6} fill="#82ca9d" />
+                          <g transform="translate(-12,-12) scale(0.75)">{getEmotionIcon(score)}</g>
+                        </g>
+                      )
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </>
           )}
         </CardContent>
       </Card>
     )
   }
 
-  // (Opcional) 8) Desglose por ítem y turno
-  function agruparPorItemYTurno(valids) {
-    const obj = {}
-    valids.forEach((val) => {
-      const { item_id, item, instancia, relevamiento, rating, photo } = val
-      if (!obj[item_id]) {
-        obj[item_id] = {
-          item_id,
-          itemName: item,
-          instancia,
-          turnos: {},
-        }
-      }
-      obj[item_id].turnos[relevamiento] = { rating, photo }
-    })
-    return obj
+  // Actualizar la función renderStageCard
+  const renderStageCard = (stage) => {
+    const score = stage.promedio
+    return (
+      <Card key={stage.name} className={`transition-all hover:shadow-lg ${getEmotionColor(score)}`}>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center justify-between">
+            {stage.name}
+            {getEmotionIcon(score)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="w-full h-[50px]" />
+          ) : (
+            <div className="space-y-2">
+              <div className="text-6xl text-center" role="img" aria-label={stage.name}>
+                {instanceEmojis[stage.name.replace(" ", "_")] || "❓"}
+              </div>
+              <p className="text-2xl font-bold text-center mt-4">{score.toFixed(2)}</p>
+              <div className="flex justify-center">{renderStars(score)}</div>
+              <p className="text-sm mt-2 text-center">{getEmotionText(score)}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
   }
 
-  const agrupacionItems = agruparPorItemYTurno(validaciones)
+  if (error) {
+    return (
+      <Alert variant="destructive" className="m-4">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>Error al cargar los datos: {error}</AlertDescription>
+      </Alert>
+    )
+  }
 
   return (
-    <div className="container mx-auto p-4">
-      {/* Alerta si hay pendientes */}
+    <div className="container mx-auto p-4 space-y-6">
       {pendientes > 0 && (
-        <div className="mb-4 p-4 border border-red-200 bg-red-50">
-          Existen {pendientes} validaciones pendientes de aprobación. El mapa muestra
-          únicamente las validaciones aprobadas.
-        </div>
+        <Alert className="bg-yellow-50 border-yellow-200 text-yellow-800">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Existen {pendientes} validaciones pendientes de aprobación. El mapa muestra únicamente las validaciones
+            aprobadas.
+          </AlertDescription>
+        </Alert>
       )}
 
-      <h1 className="text-3xl font-bold mb-6">Journey Customer Map</h1>
+      <h1 className="text-3xl font-bold">Journey Customer Map</h1>
 
-      {/* Tabs: General / Limpieza / Atención / Juego */}
-      <Tabs defaultValue="general" className="mb-8">
-        <TabsList>
+      <Tabs defaultValue="general" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="limpieza">Limpieza</TabsTrigger>
-          <TabsTrigger value="atencion">Atención al Cliente</TabsTrigger>
+          <TabsTrigger value="atencion">Atención</TabsTrigger>
           <TabsTrigger value="juego">Juego</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">{renderGeneralChart()}</TabsContent>
         <TabsContent value="limpieza">{renderAreaChart("Limpieza")}</TabsContent>
-        <TabsContent value="atencion">
-          {renderAreaChart("Atención al Cliente")}
-        </TabsContent>
+        <TabsContent value="atencion">{renderAreaChart("Atención al Cliente")}</TabsContent>
         <TabsContent value="juego">{renderAreaChart("Juego")}</TabsContent>
       </Tabs>
 
-      {/* Tarjetas con promedios por instancia (ej. al final) */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {calcularPromediosGenerales().map((stage) => (
-          <Card key={stage.name}>
-            <CardHeader>
-              <CardTitle>{stage.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="w-full h-[50px]" />
-              ) : (
-                <div>
-                  <p className="text-2xl font-bold mb-2">
-                    {stage.promedio.toFixed(2)}
-                  </p>
-                  <div>{renderStars(stage.promedio)}</div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* (Opcional) Desglose por ítem y relevamiento */}
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Detalle por Ítem y Turno</h2>
-        {isLoading ? (
-          <Skeleton className="w-full h-[100px]" />
-        ) : (
-          Object.values(agrupacionItems).map((itemObj) => {
-            const { item_id, itemName, instancia, turnos } = itemObj
-            return (
-              <Card key={item_id} className="mb-4">
-                <CardHeader>
-                  <CardTitle>
-                    {itemName} - Instancia: {instancia}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {[1, 2, 3].map((t) => {
-                    const dataTurno = turnos[t]
-                    if (!dataTurno) {
-                      return (
-                        <div key={t} className="border-b mb-2 pb-2">
-                          <p>Turno {t}: <em>Sin validación</em></p>
-                        </div>
-                      )
-                    }
-                    return (
-                      <div key={t} className="border-b mb-2 pb-2">
-                        <p>Turno {t}</p>
-                        <p>Rating: {dataTurno.rating}</p>
-                        <div>{renderStars(dataTurno.rating)}</div>
-                        {dataTurno.photo && (
-                          <img
-                            src={dataTurno.photo}
-                            alt="Foto"
-                            className="w-32 h-32 object-cover mt-2"
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </CardContent>
-              </Card>
-            )
-          })
-        )}
+        {calcularPromediosGenerales().map((stage) => renderStageCard(stage))}
       </div>
     </div>
   )
 }
+

@@ -1,17 +1,9 @@
-"use client"
-
-import React, { useState } from "react"
-import { Button } from "@/components/ui/button"
-
-export function ImageUpload({ onImageUpload }) {
-  const [previewUrl, setPreviewUrl] = useState(null)
-
+export function ImageUpload({ children, onImageUpload }) {
   const handleFileChange = (event) => {
     const file = event.target.files[0]
     if (file) {
       const reader = new FileReader()
       reader.onloadend = () => {
-        setPreviewUrl(reader.result)
         onImageUpload(reader.result)
       }
       reader.readAsDataURL(file)
@@ -19,27 +11,12 @@ export function ImageUpload({ onImageUpload }) {
   }
 
   return (
-    <div className="mt-4">
-      <input
-        type="file"
-        accept="image/*"
-        capture="camera"
-        onChange={handleFileChange}
-        className="hidden"
-        id="image-upload"
-      />
-      <label htmlFor="image-upload">
-        <Button as="span" variant="outline">
-          Subir foto
-        </Button>
+    <div>
+      <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" id="image-upload" />
+      <label htmlFor="image-upload" className="cursor-pointer">
+        {children}
       </label>
-      {previewUrl && (
-        <img
-          src={previewUrl || "/placeholder.svg"}
-          alt="Preview"
-          className="mt-2 w-full h-32 object-cover rounded"
-        />
-      )}
     </div>
   )
 }
+
