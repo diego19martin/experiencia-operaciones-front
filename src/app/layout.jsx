@@ -3,6 +3,7 @@ import "./globals.css"
 import { Sidebar } from "@/components/Sidebar"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { Toaster } from "@/components/ui/toaster"
+import FloatingActionButton from "@/components/FloatingActionButton"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -18,7 +19,11 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <div className="flex min-h-screen">
             <Sidebar />
-            <main className="flex-1 md:ml-[240px] p-8">{children}</main>
+            <main className="flex-1 md:ml-[240px] p-8 relative">
+              {children}
+              {/* Botón flotante para acceso rápido */}
+              <FloatingActionButton />
+            </main>
           </div>
           <Toaster />
         </AuthProvider>
@@ -26,4 +31,3 @@ export default function RootLayout({ children }) {
     </html>
   )
 }
-

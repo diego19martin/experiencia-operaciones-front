@@ -7,17 +7,31 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
-import { Menu, Home, ClipboardCheck, BarChart2, Map, Settings, Bell, LogOut } from "lucide-react"
+import { 
+  Menu, 
+  Home, 
+  ClipboardCheck, 
+  BarChart2, 
+  Map, 
+  Settings, 
+  Bell, 
+  LogOut,
+  Target,
+  Calendar,
+  LineChart,
+  CheckSquare
+} from "lucide-react"
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
 
-const NavItem = ({ href, label, icon: Icon, isActive }) => (
+const NavItem = ({ href, label, icon: Icon, isActive, indent = false }) => (
   <Link
     href={href}
     className={cn(
       "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
       isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground",
+      indent && "pl-9" // Aplicar sangría si es un subítem
     )}
   >
     <Icon className="h-4 w-4" />
@@ -51,45 +65,76 @@ export function Sidebar({ className }) {
     return () => clearInterval(interval)
   }, [])
 
+  // Determinar si el usuario es coordinador o jefe
+  const puedeCargarResultados = user?.role === "coordinador_atencion" || 
+                                user?.role === "jefe_juego" || 
+                                user?.role === "jefe_operaciones" || 
+                                user?.role === "jefe_limpieza"
+
   const getNavLinks = () => {
     if (!user) {
       return [{ href: "/login", label: "Iniciar Sesión", icon: LogOut }]
     }
 
+    // Links base según el rol
+    let links = []
+
     switch (user.role) {
       case "jefe_juego":
-        return [
+        links = [
           { href: "/dashboard/juego", label: "Dashboard", icon: Home },
           { href: "/aprobaciones", label: "Aprobaciones", icon: ClipboardCheck },
           { href: "/resumen-turno", label: "Resumen de Turno", icon: BarChart2 },
           { href: "/journey-map", label: "Journey Map", icon: Map },
           { href: "/configuracion", label: "Configuración", icon: Settings },
-          { href: "/novedades", label: "Novedades", icon: Bell },
+          { href: "/novedades", label: "Novedades", icon: Bell }
         ]
+        break
       case "jefe_operaciones":
-        return [
+        links = [
           { href: "/dashboard/operaciones", label: "Dashboard", icon: Home },
           { href: "/areas/operaciones", label: "Validaciones", icon: ClipboardCheck },
-          { href: "/novedades", label: "Novedades", icon: Bell },
+          { href: "/novedades", label: "Novedades", icon: Bell }
         ]
+        break
       case "jefe_limpieza":
-        return [
+        links = [
           { href: "/dashboard/limpieza", label: "Dashboard", icon: Home },
           { href: "/areas/limpieza", label: "Validaciones", icon: ClipboardCheck },
-          { href: "/novedades", label: "Novedades", icon: Bell },
+          { href: "/novedades", label: "Novedades", icon: Bell }
         ]
+        break
       case "coordinador_atencion":
-        return [
+        links = [
           { href: "/dashboard/atencion", label: "Dashboard", icon: Home },
           { href: "/areas/atencion", label: "Validaciones", icon: ClipboardCheck },
-          { href: "/novedades", label: "Novedades", icon: Bell },
+          { href: "/novedades", label: "Novedades", icon: Bell }
         ]
+        break
       default:
-        return [
+        links = [
           { href: "/dashboard", label: "Dashboard", icon: Home },
-          { href: "/novedades", label: "Novedades", icon: Bell },
+          { href: "/novedades", label: "Novedades", icon: Bell }
         ]
     }
+
+    // Agregar sección de objetivos para todos los usuarios
+    links.push({ href: "/objetivos", label: "Objetivos", icon: Target })
+    
+    // Agregar enlaces adicionales de objetivos para roles específicos
+    if (puedeCargarResultados) {
+      links.push(
+        { href: "/objetivos/seguimiento", label: "Seguimiento", icon: LineChart },
+        { href: "/objetivos/seguimiento/diario", label: "Carga Diaria", icon: Calendar, indent: true }
+      )
+    }
+    
+    // Solo para jefe_juego, agregar administración de objetivos
+    if (user.role === "jefe_juego") {
+      links.push({ href: "/objetivos/crear", label: "Administrar Objetivos", icon: ClipboardCheck })
+    }
+
+    return links
   }
 
   const navLinks = getNavLinks()
@@ -124,6 +169,7 @@ export function Sidebar({ className }) {
                   label={link.label}
                   icon={link.icon}
                   isActive={pathname === link.href}
+                  indent={link.indent}
                 />
               ))}
             </div>
@@ -172,4 +218,3 @@ export function Sidebar({ className }) {
     </>
   )
 }
-

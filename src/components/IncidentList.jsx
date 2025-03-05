@@ -1,8 +1,19 @@
 "use client"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, CheckCircle2, AlertCircle, CheckCheck, Calendar, Timer, ArrowRight } from "lucide-react"
+import {
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  CheckCheck,
+  Calendar,
+  Timer,
+  ArrowRight,
+  Target,
+  BarChart,
+} from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +29,10 @@ const STATUS_BADGES = {
   closed: { label: "Aprobado", variant: "default", icon: CheckCheck },
 }
 
+// Remove or comment out this import if it exists
+// import { formatDateTime } from "@/lib/utils"
+
+// Keep using the local formatDateTime function that was working before
 function formatDateTime(dateString) {
   if (!dateString) return ""
 
@@ -132,6 +147,41 @@ function shouldShowAttention(incident) {
   return false
 }
 
+function GoalBadge({ goal }) {
+  if (!goal) return null
+
+  const getGoalValue = () => {
+    if (goal.measurement_type === "percentage") {
+      return `${goal.target_percentage}%`
+    }
+    if (goal.measurement_type === "value") {
+      return goal.target_value
+    }
+    return goal.target_resolution
+  }
+
+  const getGoalIcon = () => {
+    switch (goal.measurement_type) {
+      case "percentage":
+        return <BarChart className="w-4 h-4" />
+      case "value":
+        return <Target className="w-4 h-4" />
+      default:
+        return <CheckCircle2 className="w-4 h-4" />
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {getGoalIcon()}
+      <div>
+        <div className="font-medium">Objetivo: {getGoalValue()}</div>
+        <div className="text-sm text-muted-foreground">{goal.description}</div>
+      </div>
+    </div>
+  )
+}
+
 export function IncidentList({ incidents, updateIncidentStatus, isUpdating }) {
   const { user } = useAuth()
 
@@ -198,6 +248,22 @@ export function IncidentList({ incidents, updateIncidentStatus, isUpdating }) {
                 </div>
               </div>
             </CardHeader>
+            {incident.goal && (
+              <div className="px-4 py-2 bg-muted/20 border-t border-b">
+                <GoalBadge goal={incident.goal} />
+                {incident.goal.progress_percentage !== null && (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium mb-1">Progreso del objetivo:</div>
+                    <div className="w-full bg-muted rounded-full h-2.5">
+                      <div
+                        className="bg-primary h-2.5 rounded-full"
+                        style={{ width: `${incident.goal.progress_percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <CardContent className="p-4 pt-0">
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">{incident.description}</p>

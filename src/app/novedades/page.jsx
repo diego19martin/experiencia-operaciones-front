@@ -38,6 +38,9 @@ export default function NovedadesPage() {
         return user?.role === "jefe_juego" || incident.area === getRoleArea(user?.role)
       })
 
+      console.log("Filtered data:", filteredData);
+      
+
       setIncidents(filteredData)
     } catch (error) {
       console.error("Error:", error)

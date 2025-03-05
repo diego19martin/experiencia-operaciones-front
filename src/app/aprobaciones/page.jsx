@@ -13,12 +13,24 @@ import Swal from "sweetalert2"
 
 export default function AprobacionesJefeJuego() {
   const [validaciones, setValidaciones] = useState([])
+  const [validacionesAprobadas, setValidacionesAprobadas] = useState([])
+  const [validacionesRechazadas, setValidacionesRechazadas] = useState([])
   const [filtroArea, setFiltroArea] = useState("todas")
   const [comentarioDialogOpen, setComentarioDialogOpen] = useState(false)
   const [comentarioActual, setComentarioActual] = useState("")
   const [currentTurno, setCurrentTurno] = useState(null)
   const [imagenDialogOpen, setImagenDialogOpen] = useState(false)
   const [imagenActual, setImagenActual] = useState("")
+  const [resumenValidaciones, setResumenValidaciones] = useState({})
+
+  // Función para renderizar las estrellas según el rating
+  const renderStars = (rating) => {
+    const stars = []
+    for (let i = 1; i <= 5; i++) {
+      stars.push(<Star key={i} className={`w-4 h-4 ${i <= rating ? "text-yellow-500" : "text-gray-300"}`} />)
+    }
+    return stars
+  }
 
   // Calcular el turno actual
   useEffect(() => {
@@ -39,58 +51,78 @@ export default function AprobacionesJefeJuego() {
       setCurrentTurno(calcularTurno())
     }
 
-    updateTurno() // Inicializa el turno actual
-    const interval = setInterval(updateTurno, 60 * 1000) // Actualiza el turno cada minuto
+    updateTurno()
+    const interval = setInterval(updateTurno, 60 * 1000)
 
     return () => clearInterval(interval)
   }, [])
 
   // Fetch de validaciones
   useEffect(() => {
-    if (currentTurno === null) return // Evita fetch si currentTurno no está definido aún
+    if (currentTurno === null) return
 
     const fetchValidaciones = async () => {
       try {
         const today = new Date().toISOString().split("T")[0]
         const areaParam = filtroArea !== "todas" ? `&area_id=${filtroArea}` : ""
-        const res = await fetch(
+
+        // Fetch validaciones pendientes
+        const resPending = await fetch(
           `http://localhost:3001/api/validations?status=pending&turno=${currentTurno}&date=${today}${areaParam}`,
         )
-        if (!res.ok) {
-          throw new Error(`Error en la solicitud: ${res.status}`)
-        }
-        const data = await res.json()
-        setValidaciones(Array.isArray(data) ? data : [])
+        if (!resPending.ok) throw new Error(`Error en la solicitud: ${resPending.status}`)
+        const pendingData = await resPending.json()
+        setValidaciones(Array.isArray(pendingData) ? pendingData : [])
+
+        // Fetch validaciones aprobadas
+        const resApproved = await fetch(
+          `http://localhost:3001/api/validations?status=approved&turno=${currentTurno}&date=${today}${areaParam}`,
+        )
+        const approvedData = resApproved.ok ? await resApproved.json() : []
+        setValidacionesAprobadas(Array.isArray(approvedData) ? approvedData : [])
+
+        // Fetch validaciones rechazadas
+        const resRejected = await fetch(
+          `http://localhost:3001/api/validations?status=rejected&turno=${currentTurno}&date=${today}${areaParam}`,
+        )
+        const rejectedData = resRejected.ok ? await resRejected.json() : []
+        setValidacionesRechazadas(Array.isArray(rejectedData) ? rejectedData : [])
+
+        // Actualizar resumen con todas las validaciones
+        const todasLasValidaciones = [...pendingData, ...approvedData, ...rejectedData]
+        actualizarResumen(todasLasValidaciones)
       } catch (err) {
-        console.error("Error al obtener validaciones pendientes:", err)
+        console.error("Error al obtener validaciones:", err)
         setValidaciones([])
+        setValidacionesAprobadas([])
+        setValidacionesRechazadas([])
       }
     }
 
     fetchValidaciones()
   }, [filtroArea, currentTurno])
 
-  const renderStars = (puntuacion) => {
-    return [1, 2, 3, 4, 5].map((star) => (
-      <Star
-        key={star}
-        className={`w-4 h-4 ${star <= puntuacion ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}`}
-      />
-    ))
+  const actualizarResumen = (validaciones) => {
+    const resumen = validaciones.reduce((acc, val) => {
+      if (!acc[val.area]) {
+        acc[val.area] = { total: 0, aprobadas: 0, rechazadas: 0, pendientes: 0 }
+      }
+      acc[val.area].total++
+      if (val.status === "approved") acc[val.area].aprobadas++
+      else if (val.status === "rejected") acc[val.area].rechazadas++
+      else acc[val.area].pendientes++
+      return acc
+    }, {})
+    setResumenValidaciones(resumen)
   }
 
   const checkAllApproved = (area) => {
     const areaValidaciones = validaciones.filter((v) => v.area === area)
     if (areaValidaciones.length === 0) return false
 
-    const puntajePromedio = areaValidaciones.reduce((sum, v) => sum + v.rating, 0) / areaValidaciones.length
-
     Swal.fire({
       title: "¡Todas las validaciones aprobadas!",
-      html: `
-        <p>Todas las validaciones del área <strong>${area}</strong> han sido aprobadas.</p>
-        <p>Puntaje promedio: <strong>${puntajePromedio.toFixed(2)}</strong></p>
-      `,
+      html: `<p>Todas las validaciones del área <strong>${area}</strong> han sido aprobadas.</p>`,
       icon: "success",
       showCancelButton: true,
       confirmButtonColor: "#3085d6",
@@ -99,8 +131,8 @@ export default function AprobacionesJefeJuego() {
       cancelButtonText: "Cerrar",
     }).then((result) => {
       if (result.isConfirmed) {
-        // Aquí puedes agregar la lógica para navegar al Customer Journey Map
-        console.log("Navegar al Customer Journey Map")
+        // Navigate to the Journey Map page
+        window.location.href = "/journey-map"
       }
     })
   }
@@ -112,13 +144,26 @@ export default function AprobacionesJefeJuego() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "approved" }),
       })
-      setValidaciones((prev) => {
-        const updatedValidaciones = prev.filter((v) => v.validation_id !== validationId)
-        if (updatedValidaciones.filter((v) => v.area === area).length === 0) {
-          checkAllApproved(area)
-        }
-        return updatedValidaciones
-      })
+
+      // Mover la validación de pendientes a aprobadas
+      const validacionAprobada = validaciones.find((v) => v.validation_id === validationId)
+      if (validacionAprobada) {
+        setValidacionesAprobadas((prev) => [...prev, { ...validacionAprobada, status: "approved" }])
+        setValidaciones((prev) => prev.filter((v) => v.validation_id !== validationId))
+
+        // Actualizar resumen
+        const todasLasValidaciones = [
+          ...validaciones.filter((v) => v.validation_id !== validationId),
+          ...validacionesAprobadas,
+          { ...validacionAprobada, status: "approved" },
+          ...validacionesRechazadas,
+        ]
+        actualizarResumen(todasLasValidaciones)
+      }
+
+      if (validaciones.filter((v) => v.area === area).length === 1) {
+        checkAllApproved(area)
+      }
     } catch (error) {
       console.error("Error al aprobar validación:", error)
     }
@@ -131,7 +176,22 @@ export default function AprobacionesJefeJuego() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "rejected" }),
       })
-      setValidaciones((prev) => prev.filter((v) => v.validation_id !== validationId))
+
+      // Mover la validación de pendientes a rechazadas
+      const validacionRechazada = validaciones.find((v) => v.validation_id === validationId)
+      if (validacionRechazada) {
+        setValidacionesRechazadas((prev) => [...prev, { ...validacionRechazada, status: "rejected" }])
+        setValidaciones((prev) => prev.filter((v) => v.validation_id !== validationId))
+
+        // Actualizar resumen
+        const todasLasValidaciones = [
+          ...validaciones.filter((v) => v.validation_id !== validationId),
+          ...validacionesAprobadas,
+          ...validacionesRechazadas,
+          { ...validacionRechazada, status: "rejected" },
+        ]
+        actualizarResumen(todasLasValidaciones)
+      }
     } catch (error) {
       console.error("Error al rechazar validación:", error)
     }
@@ -152,8 +212,12 @@ export default function AprobacionesJefeJuego() {
     return new Date(dateString).toLocaleDateString("es-ES", options)
   }
 
-  const renderValidacionesPorInstancia = (validacionesFiltradas, instancia) => {
-    const validacionesInstancia = validacionesFiltradas.filter((v) => v.instancia === instancia)
+  const renderValidacionesPorInstancia = (relevamiento, instancia) => {
+    // Combinar todas las validaciones para esta instancia y relevamiento
+    const todasLasValidaciones = [...validaciones, ...validacionesAprobadas, ...validacionesRechazadas].filter(
+      (v) => v.relevamiento === relevamiento && v.instancia === instancia,
+    )
+
     return (
       <div className="space-y-4 mb-8">
         <h3 className="text-xl font-semibold capitalize bg-gradient-to-r from-gray-100 to-gray-200 p-3 rounded-lg shadow-sm">
@@ -161,7 +225,7 @@ export default function AprobacionesJefeJuego() {
         </h3>
         <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           <AnimatePresence>
-            {validacionesInstancia.map((validacion) => (
+            {todasLasValidaciones.map((validacion) => (
               <motion.div
                 key={validacion.validation_id}
                 initial={{ opacity: 0, y: 20 }}
@@ -169,7 +233,15 @@ export default function AprobacionesJefeJuego() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <Card className="overflow-hidden transition-all duration-300 hover:shadow-lg">
+                <Card
+                  className={`overflow-hidden transition-all duration-300 hover:shadow-lg ${
+                    validacion.status === "approved"
+                      ? "bg-green-50"
+                      : validacion.status === "rejected"
+                        ? "bg-red-50"
+                        : ""
+                  }`}
+                >
                   <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4">
                     <CardTitle className="flex justify-between items-center">
                       <span className="text-lg font-semibold truncate">{validacion.item}</span>
@@ -208,22 +280,36 @@ export default function AprobacionesJefeJuego() {
                     )}
                   </CardContent>
                   <CardFooter className="bg-gray-50 p-4 flex justify-between">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 mr-2 text-green-600 hover:bg-green-50"
-                      onClick={() => aprobarValidacion(validacion.validation_id, validacion.area)}
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" /> Aprobar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 ml-2 text-red-600 hover:bg-red-50"
-                      onClick={() => rechazarValidacion(validacion.validation_id)}
-                    >
-                      <XCircle className="w-4 h-4 mr-2" /> Rechazar
-                    </Button>
+                    {validacion.status === "pending" && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 mr-2 text-green-600 hover:bg-green-50"
+                          onClick={() => aprobarValidacion(validacion.validation_id, validacion.area)}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" /> Aprobar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 ml-2 text-red-600 hover:bg-red-50"
+                          onClick={() => rechazarValidacion(validacion.validation_id)}
+                        >
+                          <XCircle className="w-4 h-4 mr-2" /> Rechazar
+                        </Button>
+                      </>
+                    )}
+                    {validacion.status === "approved" && (
+                      <Badge variant="success" className="w-full justify-center">
+                        Aprobada
+                      </Badge>
+                    )}
+                    {validacion.status === "rejected" && (
+                      <Badge variant="destructive" className="w-full justify-center">
+                        Rechazada
+                      </Badge>
+                    )}
                   </CardFooter>
                 </Card>
               </motion.div>
@@ -257,6 +343,29 @@ export default function AprobacionesJefeJuego() {
         </div>
       </div>
 
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Resumen de Validaciones</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            {Object.entries(resumenValidaciones).map(([area, stats]) => (
+              <Card key={area}>
+                <CardHeader>
+                  <CardTitle className="text-lg">{area}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p>Total: {stats.total}</p>
+                  <p className="text-green-600">Aprobadas: {stats.aprobadas}</p>
+                  <p className="text-red-600">Rechazadas: {stats.rechazadas}</p>
+                  <p className="text-yellow-600">Pendientes: {stats.pendientes}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="relevamiento1" className="space-y-4">
         <TabsList className="w-full sm:w-auto grid grid-cols-3 gap-4">
           <TabsTrigger value="relevamiento1" className="w-full">
@@ -273,22 +382,10 @@ export default function AprobacionesJefeJuego() {
         {[1, 2, 3].map((relevamiento) => (
           <TabsContent key={relevamiento} value={`relevamiento${relevamiento}`}>
             <h2 className="text-2xl font-semibold mb-4 text-gray-700">Relevamiento {relevamiento}</h2>
-            {renderValidacionesPorInstancia(
-              validaciones.filter((v) => v.relevamiento === relevamiento),
-              "ingreso",
-            )}
-            {renderValidacionesPorInstancia(
-              validaciones.filter((v) => v.relevamiento === relevamiento),
-              "experiencia_en_maquina",
-            )}
-            {renderValidacionesPorInstancia(
-              validaciones.filter((v) => v.relevamiento === relevamiento),
-              "pausa",
-            )}
-            {renderValidacionesPorInstancia(
-              validaciones.filter((v) => v.relevamiento === relevamiento),
-              "salida",
-            )}
+            {renderValidacionesPorInstancia(relevamiento, "ingreso")}
+            {renderValidacionesPorInstancia(relevamiento, "experiencia_en_maquina")}
+            {renderValidacionesPorInstancia(relevamiento, "pausa")}
+            {renderValidacionesPorInstancia(relevamiento, "salida")}
           </TabsContent>
         ))}
       </Tabs>
